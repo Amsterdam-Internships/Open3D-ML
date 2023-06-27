@@ -187,6 +187,15 @@ def main():
         pipeline.cfg_tb = cfg_tb
 
         if args.split == 'test':
+
+            # Access the contents of the pipeline object
+            pipeline_contents = vars(pipeline)
+
+            # Print all of its contents
+            print('The pipeline contents are as follows:')
+            for key, value in pipeline_contents.items():
+                print(f"{key}: {value}")
+
             pipeline.run_test()
         else:
             pipeline.run_train()
