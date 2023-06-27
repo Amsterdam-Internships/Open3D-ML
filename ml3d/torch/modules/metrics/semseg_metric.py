@@ -104,6 +104,17 @@ class SemSegMetric(object):
         Returns:
             Confusion matrix for current batch.
         """
+        
+        # print(f'Scores type is: {type(scores)}')
+        # print('Scores type should be torch.FloatTensor')
+        # print(f'Scores shape is: {scores.shape}')
+        # print(f'Scores look like this: {scores}')
+
+        # print(f'Labels type is: {type(labels)}')
+        # print('Labels type should be torch.LongTensor')
+        # print(f'Labels shape is: {labels.shape}')
+        # print(f'Labels look like this: {labels}')
+
         C = scores.size(-1)
         y_pred = scores.detach().cpu().numpy().reshape(-1, C)  # (N, C)
         y_pred = np.argmax(y_pred, axis=1)  # (N,)
