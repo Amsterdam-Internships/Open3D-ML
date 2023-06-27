@@ -1,4 +1,5 @@
 import logging
+import os
 from os.path import exists, join
 from pathlib import Path
 from datetime import datetime
@@ -19,6 +20,7 @@ from ..modules.metrics import SemSegMetric
 from ...utils import make_dir, PIPELINE, get_runid, code2md
 from ...datasets import InferenceDummySplit
 
+logging.basicConfig(level=os.environ.get('LOGLEVEL', 'INFO'))
 log = logging.getLogger(__name__)
 
 
@@ -128,6 +130,20 @@ class SemanticSegmentation(BasePipeline):
         Returns:
             Returns the inference results.
         """
+        #added for science purposes
+        timestamp = datetime.now().strftime('%Y-%m-%d_%H:%M:%S')
+        cfg = self.cfg
+        #device = self.device
+        #lets hard commit, once with gpu, once with cuda
+        device = 'cuda'
+
+
+        log_file_path = join(cfg.logs_dir, 'log_test_' + timestamp + '.txt')
+        log.addHandler(logging.FileHandler(log_file_path))
+        log.info("DEVICE : {}".format(device))
+        log.info("Logging in file : {}".format(log_file_path))
+
+        log.info("Running Inference")
         cfg = self.cfg
         model = self.model
         device = self.device
@@ -192,14 +208,21 @@ class SemanticSegmentation(BasePipeline):
 
         timestamp = datetime.now().strftime('%Y-%m-%d_%H:%M:%S')
 
-        log.info("DEVICE : {}".format(device))
+        #print(f'Printing log: {log}')
+
         log_file_path = join(cfg.logs_dir, 'log_test_' + timestamp + '.txt')
-        log.info("Logging in file : {}".format(log_file_path))
         log.addHandler(logging.FileHandler(log_file_path))
+        log.info("DEVICE : {}".format(device))
+        log.info("Logging in file : {}".format(log_file_path))
+        
 
         batcher = self.get_batcher(device)
 
-        test_dataset = dataset.get_split('test')
+        #Additional change
+        #test_dataset = dataset.get_split('test')
+        test_dataset = dataset.get_split('train')
+
+
         test_sampler = test_dataset.sampler
         test_split = TorchDataloader(dataset=test_dataset,
                                      preprocess=model.preprocess,
@@ -213,6 +236,10 @@ class SemanticSegmentation(BasePipeline):
 
         self.dataset_split = test_dataset
 
+        print(f'dataset_split type is: {type(self.dataset_split)}')
+        #print(f'dataset_split shape is: {self.dataset_split.shape}')
+        print(f'dataset_split look like this: {self.dataset_split}')
+
         self.load_ckpt(model.cfg.ckpt_path)
 
         model.trans_point_sampler = test_sampler.get_point_sampler()
@@ -223,22 +250,37 @@ class SemanticSegmentation(BasePipeline):
 
         record_summary = cfg.get('summary').get('record_for', [])
         log.info("Started testing")
-
+        print('---Starting loop---')
         with torch.no_grad():
             for unused_step, inputs in enumerate(test_loader):
                 if hasattr(inputs['data'], 'to'):
                     inputs['data'].to(device)
+                    print('---Passed first if statement---')
                 results = model(inputs['data'])
                 self.update_tests(test_sampler, inputs, results)
-
+                #underneath print is running on every iteration
+                #print('---Still running 1---')
                 if self.complete_infer:
                     inference_result = {
                         'predict_labels': self.ori_test_labels.pop(),
                         'predict_scores': self.ori_test_probs.pop()
                     }
+                    if (inference_result['predict_labels'] > 0).any():
+                        print('---Labels for current test are correct---')
+                    #print(inference_result)
                     attr = self.dataset_split.get_attr(test_sampler.cloud_id)
+                    #print(attr)
+                    #gt_labels_test = self.dataset_split.get_data(
+                    #    test_sampler.cloud_id)
                     gt_labels = self.dataset_split.get_data(
                         test_sampler.cloud_id)['label']
+                    #print(f'gt_labels_test keys are: {gt_labels_test.keys()}')
+                    #print(f'gt_labels_test looks: {gt_labels_test}')
+                    #print('---Passed second if statement---')
+                    #print(f'gt_labels type is: {type(gt_labels)}')
+                    #print(f'gt_labels shape is: {gt_labels.shape}')
+                    #print(f'gt_labels look like this: {gt_labels}')
+
                     if (gt_labels > 0).any():
                         valid_scores, valid_labels = filter_valid_label(
                             torch.tensor(
@@ -246,17 +288,26 @@ class SemanticSegmentation(BasePipeline):
                             torch.tensor(gt_labels).to(device),
                             model.cfg.num_classes, model.cfg.ignored_label_inds,
                             device)
+                        print('---Passed third if statement---')
 
                         self.metric_test.update(valid_scores, valid_labels)
                         log.info(f"Accuracy : {self.metric_test.acc()}")
                         log.info(f"IoU : {self.metric_test.iou()}")
                     dataset.save_test_result(inference_result, attr)
                     # Save only for the first batch
+                    #this prints executes once a test (3 times while running a run_test())
+                    #print('---Still running 2---')
                     if 'test' in record_summary and 'test' not in self.summary:
                         self.summary['test'] = self.get_3d_summary(
                             results, inputs['data'], 0, save_gt=False)
+                        print('---Passed fourth if statement---')
+        #I deleted [-1] after both of the prints (directly after ())
+        #Original code:
+        # log.info(
+        #     f"Overall Testing Accuracy : {self.metric_test.acc()[-1]}, mIoU : {self.metric_test.iou()[-1]}"
+        # )
         log.info(
-            f"Overall Testing Accuracy : {self.metric_test.acc()[-1]}, mIoU : {self.metric_test.iou()[-1]}"
+            f"Overall Testing Accuracy : {self.metric_test.acc()}, mIoU : {self.metric_test.iou()}"
         )
 
         log.info("Finished testing")
